@@ -1,4 +1,5 @@
 fastai
 streamlit
+gdown
 torch
 torchvision
