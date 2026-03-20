@@ -1,5 +1,5 @@
  🔬 Cervical Cancer Diagnostic AI
-A Deep Learning Project for Automated Cytology Classification
+A Deep Learning Project for "Add your preferred project Title"
 
 👩‍💻 Project Team
 * *Lead Engineer: Theresa Mapfumo
