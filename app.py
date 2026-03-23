@@ -1,94 +1,66 @@
 import streamlit as st
-# MUST be the first command
-st.set_page_config(page_title="Cervical Cancer AI", page_icon="🔬")
 
+# 1. Setup Page (Must be first)
+st.set_page_config(page_title="Cervical AI", page_icon="🔬", layout="centered")
+
+# 2. Environment Fixes (Prevents common crashes)
 import sys
 from types import ModuleType
-
-# --- IPYTHON MOCK (Fixes the Import Error) ---
 if 'IPython' not in sys.modules:
-    mock_ipython = ModuleType('IPython')
-    mock_ipython.display = ModuleType('display')
-    mock_ipython.display.display = lambda *args, **kwargs: None
-    mock_ipython.display.HTML = lambda *args, **kwargs: None
-    mock_ipython.display.Markdown = lambda *args, **kwargs: None
-    sys.modules['IPython'] = mock_ipython
-    sys.modules['IPython.display'] = mock_ipython.display
+    sys.modules['IPython'] = ModuleType('IPython')
+    sys.modules['IPython'].display = ModuleType('display')
+
+import fastcore.dispatch
+if not hasattr(fastcore.dispatch.Resolver, 'dict'):
+    fastcore.dispatch.Resolver.dict = property(lambda self: self.__dict__)
 
 from fastai.vision.all import *
-from PIL import Image
-import os
 import gdown
+import os
 
-# --- 1. SETTINGS ---
+# 3. Configuration
 FILE_ID = '1D5CVlxR26-RzAjGQqtSxtJhd-ymw9OpT'
-MODEL_FILENAME = 'cervix_levels_model.pkl'
+MODEL_PATH = 'model.pkl'
 
 @st.cache_resource
-def load_model_from_drive():
-    # Only download if the file is completely missing
-    if not os.path.exists(MODEL_FILENAME):
-        with st.spinner("Downloading AI Model... Please wait."):
+def get_model():
+    if not os.path.exists(MODEL_PATH):
+        with st.spinner("Downloading AI Brain..."):
             url = f'https://drive.google.com/uc?id={FILE_ID}'
-            # fuzzy=True is required for the large file redirect shown in your logs
-            gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
+            gdown.download(url, MODEL_PATH, quiet=False, fuzzy=True)
+    return load_learner(MODEL_PATH, cpu=True)
+
+# 4. Simple UI
+st.title("🔬 Cervical Cancer Diagnostic AI")
+st.caption("Lead Engineer: Theresa Mapfumo | Hardware: CPU Mode")
+
+try:
+    learn = get_model()
     
-    # Final check: if the file exists, try to load it
-    try:
-        # We use cpu=True to ensure it works on Streamlit's servers
-        return load_learner(MODEL_FILENAME, cpu=True)
-    except Exception as e:
-        # If loading fails, the file is likely corrupt; remove it so next refresh retries
-        if os.path.exists(MODEL_FILENAME):
-            os.remove(MODEL_FILENAME)
-        st.error(f"Error loading model: {e}")
-        st.stop()
+    uploaded_file = st.file_uploader("Drop a cell image here", type=['jpg', 'jpeg', 'png'])
 
-# Load the AI
-learn = load_model_from_drive()
+    if uploaded_file:
+        img = PILImage.create(uploaded_file)
+        st.image(img, caption="Scanning Image...", use_container_width=True)
+        
+        with st.spinner("Analyzing..."):
+            pred, idx, probs = learn.predict(img)
+            conf = float(probs[idx]) * 100
 
-# --- 2. FRONTEND DESIGN ---
-st.title("🔬 Digital Cytology Diagnostic Assistant")
-st.markdown(f"**Lead Engineer:** Theresa Mapfumo")
-st.markdown("---")
+        # Big, Easy-to-Read Result
+        st.divider()
+        st.subheader(f"Result: {pred}")
+        
+        if "Level 3" in str(pred) or "Level 2" in str(pred):
+            st.error(f"High Confidence: {conf:.1f}% - Action Required")
+        else:
+            st.success(f"Confidence: {conf:.1f}% - Normal/Low Risk")
+            
+        st.progress(int(conf))
 
-with st.sidebar:
-    st.header("Project Info")
-    st.write("This AI classifies cervical cells into 4 levels using a ResNet-34 architecture.")
-    st.info("Level 0: Normal\n\nLevel 3: High Risk")
-    
-    # Manual reset in case of emergency
-    if st.button("Clear App Cache"):
+except Exception as e:
+    st.error(f"System encountered an error: {e}")
+    if st.button("Repair System"):
+        if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
         st.cache_resource.clear()
-        if os.path.exists(MODEL_FILENAME):
-            os.remove(MODEL_FILENAME)
         st.rerun()
-
-# Image Uploader
-uploaded_file = st.file_uploader("Upload a microscopic cell image...", type=["jpg", "png", "jpeg"])
-
-if uploaded_file is not None:
-    img_display = Image.open(uploaded_file)
-    st.image(img_display, caption="Uploaded Image", use_container_width=True)
-    
-    with st.spinner("AI is analyzing cellular morphology..."):
-        # Convert for Fastai
-        img_fast = PILImage.create(uploaded_file)
-        pred, pred_idx, probs = learn.predict(img_fast)
-        confidence = float(probs[pred_idx]) * 100
-
-    st.subheader("Diagnostic Assessment")
-    
-    # Logic for result display
-    res = str(pred)
-    if "Level 3" in res:
-        st.error(f"RESULT: {res} (Malignant/High Risk)")
-    elif "Level 2" in res:
-        st.warning(f"RESULT: {res} (Pre-Cancerous/Monitor)")
-    elif "Level 1" in res:
-        st.info(f"RESULT: {res} (Benign/Metaplastic)")
-    else:
-        st.success(f"RESULT: {res} (Normal/Negative)")
-
-    st.metric("Model Confidence", f"{confidence:.2f}%")
-    st.progress(int(confidence))
