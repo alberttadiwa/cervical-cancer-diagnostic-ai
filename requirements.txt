@@ -1,5 +1,6 @@
-fastai==2.7.12
+fastai
 streamlit
 gdown
-torch
+ipython
+torch>=2.1.0
 torchvision
