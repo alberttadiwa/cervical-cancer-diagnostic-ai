@@ -1,82 +1,94 @@
 import streamlit as st
-# MUST BE THE FIRST STREAMLIT COMMAND
+# MUST be the first command
 st.set_page_config(page_title="Cervical Cancer AI", page_icon="🔬")
+
+import sys
+from types import ModuleType
+
+# --- IPYTHON MOCK (Fixes the Import Error) ---
+if 'IPython' not in sys.modules:
+    mock_ipython = ModuleType('IPython')
+    mock_ipython.display = ModuleType('display')
+    mock_ipython.display.display = lambda *args, **kwargs: None
+    mock_ipython.display.HTML = lambda *args, **kwargs: None
+    mock_ipython.display.Markdown = lambda *args, **kwargs: None
+    sys.modules['IPython'] = mock_ipython
+    sys.modules['IPython.display'] = mock_ipython.display
 
 from fastai.vision.all import *
 from PIL import Image
 import os
 import gdown
 
-# --- 1. SETTINGS & MODEL DOWNLOAD ---
+# --- 1. SETTINGS ---
 FILE_ID = '1D5CVlxR26-RzAjGQqtSxtJhd-ymw9OpT'
 MODEL_FILENAME = 'cervix_levels_model.pkl'
 
 @st.cache_resource
 def load_model_from_drive():
-    # If the file doesn't exist, or is a 'fake' small file (under 50MB)
-    if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 50000000:
-        if os.path.exists(MODEL_FILENAME): 
-            os.remove(MODEL_FILENAME)
-        
-        with st.spinner("Downloading AI Model from Google Drive... This may take a minute."):
-            # fuzzy=True bypasses the "large file" warning page
+    # Only download if the file is completely missing
+    if not os.path.exists(MODEL_FILENAME):
+        with st.spinner("Downloading AI Model... Please wait."):
             url = f'https://drive.google.com/uc?id={FILE_ID}'
+            # fuzzy=True is required for the large file redirect shown in your logs
             gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
-            
+    
+    # Final check: if the file exists, try to load it
     try:
-        return load_learner(MODEL_FILENAME)
+        # We use cpu=True to ensure it works on Streamlit's servers
+        return load_learner(MODEL_FILENAME, cpu=True)
     except Exception as e:
-        if os.path.exists(MODEL_FILENAME): 
+        # If loading fails, the file is likely corrupt; remove it so next refresh retries
+        if os.path.exists(MODEL_FILENAME):
             os.remove(MODEL_FILENAME)
-        st.error("Model file corrupted. Please refresh the page to try again.")
+        st.error(f"Error loading model: {e}")
         st.stop()
 
-# Load the "Brain"
+# Load the AI
 learn = load_model_from_drive()
 
 # --- 2. FRONTEND DESIGN ---
-# Header Section
 st.title("🔬 Digital Cytology Diagnostic Assistant")
 st.markdown(f"**Lead Engineer:** Theresa Mapfumo")
 st.markdown("---")
 
-# Sidebar Instructions
 with st.sidebar:
-    st.header("How to use")
-    st.write("1. Upload a microscopic image of a cell.")
-    st.write("2. The AI will analyze the structure.")
-    st.write("3. Review the predicted Level (0-3).")
+    st.header("Project Info")
+    st.write("This AI classifies cervical cells into 4 levels using a ResNet-34 architecture.")
     st.info("Level 0: Normal\n\nLevel 3: High Risk")
     
-    # Optional: Maintenance button for your partner
-    if st.button("Clear Cache & Re-download"):
+    # Manual reset in case of emergency
+    if st.button("Clear App Cache"):
+        st.cache_resource.clear()
         if os.path.exists(MODEL_FILENAME):
             os.remove(MODEL_FILENAME)
-            st.rerun()
+        st.rerun()
 
 # Image Uploader
-uploaded_file = st.file_uploader("Upload a cell image...", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader("Upload a microscopic cell image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Display the image
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Uploaded Image", use_container_width=True)
+    img_display = Image.open(uploaded_file)
+    st.image(img_display, caption="Uploaded Image", use_container_width=True)
     
-    # Run Prediction
-    with st.spinner("Analyzing cellular structure..."):
-        pred, pred_idx, probs = learn.predict(img)
+    with st.spinner("AI is analyzing cellular morphology..."):
+        # Convert for Fastai
+        img_fast = PILImage.create(uploaded_file)
+        pred, pred_idx, probs = learn.predict(img_fast)
         confidence = float(probs[pred_idx]) * 100
 
-    # Display Results
-    st.subheader("Diagnostic Result")
+    st.subheader("Diagnostic Assessment")
     
-    # Color-coded alerts based on the result
-    if "Level 3" in pred:
-        st.error(f"DETECTION: {pred}")
-    elif "Level 2" in pred:
-        st.warning(f"DETECTION: {pred}")
+    # Logic for result display
+    res = str(pred)
+    if "Level 3" in res:
+        st.error(f"RESULT: {res} (Malignant/High Risk)")
+    elif "Level 2" in res:
+        st.warning(f"RESULT: {res} (Pre-Cancerous/Monitor)")
+    elif "Level 1" in res:
+        st.info(f"RESULT: {res} (Benign/Metaplastic)")
     else:
-        st.success(f"DETECTION: {pred}")
+        st.success(f"RESULT: {res} (Normal/Negative)")
 
-    st.write(f"**Confidence Score:** {confidence:.2f}%")
+    st.metric("Model Confidence", f"{confidence:.2f}%")
     st.progress(int(confidence))
