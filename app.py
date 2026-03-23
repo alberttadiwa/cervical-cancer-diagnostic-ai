@@ -5,17 +5,27 @@ import os
 import gdown
 
 # --- 1. SETTINGS & MODEL DOWNLOAD ---
-# This is the ID Engineer Mapfumo extracted from the Drive link
 FILE_ID = '1D5CVlxR26-RzAjGQqtSxtJhd-ymw9OpT'
 MODEL_FILENAME = 'cervix_levels_model.pkl'
 
 @st.cache_resource
 def load_model_from_drive():
-    if not os.path.exists(MODEL_FILENAME):
-        with st.spinner("Downloading AI Model from Google Drive... Please wait."):
+    # If the file doesn't exist, or is a 'fake' small file from a failed download
+    if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
+        if os.path.exists(MODEL_FILENAME): os.remove(MODEL_FILENAME)
+        
+        with st.spinner("Downloading AI Model from Google Drive... This may take a minute."):
+            # Using fuzzy=True to bypass Google Drive's large file warning
             url = f'https://drive.google.com/uc?id={FILE_ID}'
-            gdown.download(url, MODEL_FILENAME, quiet=False)
-    return load_learner(MODEL_FILENAME)
+            gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
+            
+    try:
+        return load_learner(MODEL_FILENAME)
+    except Exception as e:
+        # If the file is still corrupt, delete it so the next refresh tries again
+        if os.path.exists(MODEL_FILENAME): os.remove(MODEL_FILENAME)
+        st.error("Model file corrupted or download failed. Please refresh the page.")
+        st.stop()
 
 # Load the "Brain"
 learn = load_model_from_drive()
@@ -25,7 +35,7 @@ st.set_page_config(page_title="Cervical Cancer AI", page_icon="🔬")
 
 # Header Section
 st.title("🔬 Digital Cytology Diagnostic Assistant")
-st.markdown(f"**Project Lead:** Engineer Mapfumo")
+st.markdown(f"**Lead Engineer:** Theresa Mapfumo")
 st.markdown("---")
 
 # Sidebar Instructions
@@ -48,7 +58,7 @@ if uploaded_file is not None:
     with st.spinner("Analyzing..."):
         # Fastai prediction
         pred, pred_idx, probs = learn.predict(img)
-        confidence = probs[pred_idx] * 100
+        confidence = float(probs[pred_idx]) * 100
 
     # Display Results
     st.subheader("Diagnostic Result")
