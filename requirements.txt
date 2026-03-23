@@ -1,4 +1,5 @@
-fastai
+fastcore==1.7.29
+fastai==2.8.10
 streamlit
 gdown
 ipython
