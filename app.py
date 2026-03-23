@@ -1,47 +1,27 @@
-import streamlit as st
+import gradio as gr
 from fastai.vision.all import *
-import gdown
-import os
 
-# 1. Page Config
-st.set_page_config(page_title="Cervical AI", page_icon="🔬")
+# 1. Load the model
+# Hugging Face will look for this file in the same repository
+learn = load_learner('cervix_levels_model.pkl')
 
-# 2. Simple Configuration
-FILE_ID = '1D5CVlxR26-RzAjGQqtSxtJhd-ymw9OpT'
-MODEL_PATH = 'model.pkl'
+# 2. Define the prediction function
+def predict_cell(img):
+    pred, idx, probs = learn.predict(img)
+    labels = ["Level 0", "Level 1", "Level 2", "Level 3"]
+    # Returns a dictionary of probabilities for the UI to display
+    return {labels[i]: float(probs[i]) for i in range(len(labels))}
 
-@st.cache_resource
-def load_my_model():
-    # Download if missing
-    if not os.path.exists(MODEL_PATH):
-        with st.spinner("Downloading Model..."):
-            url = f'https://drive.google.com/uc?id={FILE_ID}'
-            gdown.download(url, MODEL_PATH, quiet=False, fuzzy=True)
-    
-    # Simple Load
-    return load_learner(MODEL_PATH, cpu=True)
+# 3. Build the Frontend
+# Your student can change 'title', 'description', and 'theme' very easily here
+interface = gr.Interface(
+    fn=predict_cell,
+    inputs=gr.Image(type="pill"),
+    outputs=gr.Label(num_top_classes=3),
+    title="🔬 Cervical Cancer Diagnostic Assistant",
+    description="Upload a microscopic cell image for AI-powered classification. Developed by Theresa Mapfumo.",
+    theme="soft" 
+)
 
-# 3. Main Interface
-st.title("🔬 Cervical Cancer Diagnostic AI")
-st.markdown(f"**Lead Engineer:** Theresa Mapfumo")
-
-try:
-    learn = load_my_model()
-    
-    uploaded_file = st.file_uploader("Upload cell image", type=['jpg', 'jpeg', 'png'])
-
-    if uploaded_file:
-        img = PILImage.create(uploaded_file)
-        st.image(img, use_container_width=True)
-        
-        with st.spinner("Analyzing..."):
-            pred, idx, probs = learn.predict(img)
-            
-        st.success(f"Prediction: {pred}")
-        st.info(f"Confidence: {probs[idx]*100:.2f}%")
-
-except Exception as e:
-    st.error(f"System Error: {e}")
-    if st.button("Reset & Redownload"):
-        if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
-        st.rerun()
+# 4. Launch
+interface.launch()
