@@ -1,4 +1,7 @@
 import streamlit as st
+# MUST BE THE FIRST STREAMLIT COMMAND
+st.set_page_config(page_title="Cervical Cancer AI", page_icon="🔬")
+
 from fastai.vision.all import *
 from PIL import Image
 import os
@@ -10,29 +13,28 @@ MODEL_FILENAME = 'cervix_levels_model.pkl'
 
 @st.cache_resource
 def load_model_from_drive():
-    # If the file doesn't exist, or is a 'fake' small file from a failed download
-    if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
-        if os.path.exists(MODEL_FILENAME): os.remove(MODEL_FILENAME)
+    # If the file doesn't exist, or is a 'fake' small file (under 50MB)
+    if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 50000000:
+        if os.path.exists(MODEL_FILENAME): 
+            os.remove(MODEL_FILENAME)
         
         with st.spinner("Downloading AI Model from Google Drive... This may take a minute."):
-            # Using fuzzy=True to bypass Google Drive's large file warning
+            # fuzzy=True bypasses the "large file" warning page
             url = f'https://drive.google.com/uc?id={FILE_ID}'
             gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
             
     try:
         return load_learner(MODEL_FILENAME)
     except Exception as e:
-        # If the file is still corrupt, delete it so the next refresh tries again
-        if os.path.exists(MODEL_FILENAME): os.remove(MODEL_FILENAME)
-        st.error("Model file corrupted or download failed. Please refresh the page.")
+        if os.path.exists(MODEL_FILENAME): 
+            os.remove(MODEL_FILENAME)
+        st.error("Model file corrupted. Please refresh the page to try again.")
         st.stop()
 
 # Load the "Brain"
 learn = load_model_from_drive()
 
 # --- 2. FRONTEND DESIGN ---
-st.set_page_config(page_title="Cervical Cancer AI", page_icon="🔬")
-
 # Header Section
 st.title("🔬 Digital Cytology Diagnostic Assistant")
 st.markdown(f"**Lead Engineer:** Theresa Mapfumo")
@@ -45,6 +47,12 @@ with st.sidebar:
     st.write("2. The AI will analyze the structure.")
     st.write("3. Review the predicted Level (0-3).")
     st.info("Level 0: Normal\n\nLevel 3: High Risk")
+    
+    # Optional: Maintenance button for your partner
+    if st.button("Clear Cache & Re-download"):
+        if os.path.exists(MODEL_FILENAME):
+            os.remove(MODEL_FILENAME)
+            st.rerun()
 
 # Image Uploader
 uploaded_file = st.file_uploader("Upload a cell image...", type=["jpg", "png", "jpeg"])
@@ -55,8 +63,7 @@ if uploaded_file is not None:
     st.image(img, caption="Uploaded Image", use_container_width=True)
     
     # Run Prediction
-    with st.spinner("Analyzing..."):
-        # Fastai prediction
+    with st.spinner("Analyzing cellular structure..."):
         pred, pred_idx, probs = learn.predict(img)
         confidence = float(probs[pred_idx]) * 100
 
@@ -72,6 +79,4 @@ if uploaded_file is not None:
         st.success(f"DETECTION: {pred}")
 
     st.write(f"**Confidence Score:** {confidence:.2f}%")
-    
-    # Progress bar for visual impact
     st.progress(int(confidence))
